@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend =  "setuptools.build_meta"
+
+[project]
+name = "gtf_pyparser"
+dynamic = ["version"]
+description = "A lightweight, dependency-free GTF parser returning a structured Gene/Transcript/Interval object model."
+readme = "README.md"
+license = { text = "CC-BY-4.0" }
+authors = [
+    { name = "Romain Lannes", email = "rlannes@wi.mit.edu" }
+]
+keywords = ["bioinformatics", "GTF", "genomics", "RNA-seq", "annotation"]
+classifiers = [
+    "Development Status :: 5 - Stable",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "pytest-cov",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["gtf*"]
+
+[tool.setuptools_scm]
+write_to = "gtf/_version.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

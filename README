@@ -1,0 +1,127 @@
+# gtf
+
+A lightweight, dependency-free Python library for parsing GTF (Gene Transfer Format) files into a structured object model.
+
+## Why gtf?
+
+Most GTF parsing libraries are either too heavy (requiring pandas, SQLite, or large C extensions) or return flat data structures that don't reflect the natural hierarchy of genomic annotation. `gtf` gives you a clean `Gene → Transcript → features` object model with no dependencies beyond the Python standard library.
+
+## Installation
+
+```bash
+pip install gtf
+```
+
+## Quick start
+
+```python
+import gtf
+
+genes = gtf.parse_gtf("Homo_sapiens.GRCh38.gtf")
+
+gene = genes["ENSG00000139618"]
+print(gene.symbol, gene.start, gene.end)
+
+for transcript_id, transcript in gene.transcript.items():
+    exons = transcript.features.get("exon", [])
+    introns = gtf.get_intron(exons)
+    print(f"  {transcript_id}: {len(exons)} exons, {len(introns)} introns")
+```
+
+## Coordinate convention
+
+All coordinates are **0-based half-open** (start inclusive, end exclusive), consistent with BED and BAM format. GTF files are 1-based inclusive; the conversion is applied automatically during parsing.
+
+## API
+
+### Parsing
+
+#### `gtf.parse_gtf(gtf_file, primary_key="gene_id")`
+
+Parse a GTF file into a dictionary of `Gene` objects.
+
+```python
+genes = gtf.parse_gtf("annotation.gtf")
+genes = gtf.parse_gtf("annotation.gtf", primary_key="gene_name")
+```
+
+- **`gtf_file`** — path to the GTF file
+- **`primary_key`** — attribute used to key the returned dictionary (default: `"gene_id"`)
+- **Returns** — `dict[str, Gene]`
+
+#### `gtf.get_attr(string)`
+
+Parse a raw GTF attribute string into a key-value dictionary. Useful when processing GTF lines outside of the full parser.
+
+```python
+attrs = gtf.get_attr('gene_id "ENSG00000139618"; gene_name "BRCA2";')
+# {"gene_id": "ENSG00000139618", "gene_name": "BRCA2"}
+```
+
+### Derived features
+
+#### `gtf.get_intron(exons)`
+
+Derive intron intervals from a list of exon `Interval` objects belonging to a single transcript. Introns are numbered biologically: from 1 upward on the `+` strand, and from n down to 1 on the `-` strand.
+
+```python
+exons = transcript.features.get("exon", [])
+introns = gtf.get_intron(exons)
+```
+
+- **`exons`** — list of `Interval`, need not be pre-sorted
+- **Returns** — `list[Interval]`, empty if fewer than two exons are provided
+
+### Data classes
+
+#### `Interval`
+
+Immutable genomic coordinate record. All `Interval` objects are frozen — they are replaced rather than mutated when coordinates need updating.
+
+| Attribute   | Type          | Description                                              |
+|-------------|---------------|----------------------------------------------------------|
+| `chr`       | `str`         | Chromosome or sequence name                              |
+| `start`     | `int`         | 0-based start (inclusive)                                |
+| `end`       | `int`         | 0-based end (exclusive)                                  |
+| `strand`    | `str`         | `"+"`, `"-"`, or `"."` for unstranded                   |
+| `phase`     | `int` or `str`| Reading frame (0, 1, 2), or `"."` if not applicable     |
+| `attribute` | `dict`        | Key-value pairs from the GTF attribute column            |
+
+#### `Transcript`
+
+Groups all GTF records sharing a `transcript_id`. The genomic span always reflects the union of all features seen so far.
+
+| Attribute           | Type                          | Description                              |
+|---------------------|-------------------------------|------------------------------------------|
+| `transcript_id`     | `str`                         | Ensembl transcript ID or equivalent      |
+| `transcript_symbol` | `str` or `None`               | Human-readable transcript symbol         |
+| `interval`          | `Interval`                    | Current genomic span of the transcript   |
+| `features`          | `dict[str, list[Interval]]`   | Feature type → list of intervals         |
+
+Convenience properties: `start`, `end`, `phase`, `attribute`.
+
+#### `Gene`
+
+A gene locus containing one or more transcript isoforms.
+
+| Attribute    | Type                      | Description                                                        |
+|--------------|---------------------------|--------------------------------------------------------------------|
+| `gene_id`    | `str`                     | Primary identifier (e.g. Ensembl gene ID)                          |
+| `symbol`     | `str`                     | Gene symbol, resolved from `gene_symbol`, `gene_name`, or `gene_id`|
+| `interval`   | `Interval`                | Genomic span from the GTF `gene` record                            |
+| `transcript` | `dict[str, Transcript]`   | Transcript ID → Transcript                                         |
+
+Convenience properties: `start`, `end`, `phase`, `attribute`, `biotype`, `has_transcript`.
+
+## Logging
+
+Progress and error messages are emitted under the `"gtf"` logger. To suppress informational output:
+
+```python
+import logging
+logging.getLogger("gtf").setLevel(logging.WARNING)
+```
+
+## License
+CC-BY-4
+Citation aknowledge : Romain Lannes 2026
