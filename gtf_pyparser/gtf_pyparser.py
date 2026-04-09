@@ -6,7 +6,7 @@ import sys
 
 
 log = logging.getLogger(__name__)
-# usage logging.getLogger("gtf").setLevel(logging.WARNING)      # silence gtf
+# usage logging.getLogger("gtf").set Level(logging.WARNING)      # silence gtf
 
 @dataclass(frozen=True)
 class Interval:
