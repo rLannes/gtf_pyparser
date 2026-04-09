@@ -42,6 +42,10 @@ class Interval:
     phase: int = "."
     attribute: dict[str, str] = field(default_factory=dict)
 
+
+    def __repr__(self):
+        return "{}:{}-{}({})".format(self.chr, self.start, self.end, self.strand)
+
     def from_dict(dict):
         """
         chr, start, end, strand must be present or it will return a KeyError
@@ -97,6 +101,9 @@ class Interval:
                 return True
         return False
     
+    def eq_pos(self, other):
+        return self.chr == other.chr and self.start == other.start and self.end == other.end and self.strand == other.strand
+    
     @property
     def chr(self):
         return self.chr_
@@ -135,6 +142,15 @@ class Transcript:
     @property
     def exons(self):
         return self.features.get("exon")
+    
+
+    def __repr__(self):
+        to_p = "Transcript: transcript_id {}; transcript_symbol: {}, length: {}\n".format(self.transcript_id, self.transcript_symbol, self.interval.length)
+        to_p += "{}\n".format(self.interval)
+
+        if (exon := self.exons_positions):
+            to_p += "number_exon: {}\n".format(len(exon))
+        return to_p
 
     @property
     def cds(self): 
@@ -151,6 +167,10 @@ class Transcript:
             return mrna 
 
     @property
+    def length(self):
+        return self.interval.length
+    
+    @property
     def utr_5p(self):
         if (utr := self.features.get("5UTR")):
             return utr # flybase
@@ -166,7 +186,10 @@ class Transcript:
         
     @property
     def exons_positions(self):
-        return [x.position for x in self.features.get("exon")]
+        if "exon" in self.features:
+            return [x.position for x in self.features.get("exon")]
+        else: 
+            return None
 
     @property
     def attribute(self):
@@ -259,6 +282,10 @@ class Gene:
     # def from_dict():
 
     @property
+    def length(self):
+        return self.interval.length
+
+    @property
     def attribute(self):
         return self.interval.attribute
     
@@ -287,7 +314,14 @@ class Gene:
                 return True
         return False
 
-                                   
+    def __repr__(self):
+        to_p = "Gene: gene_id: {}; gene_symbol: {}\n".format(self.gene_id, self.symbol)
+        to_p += "{}\n".format(self.interval)
+        for tr_id, tr in self.transcripts.items():
+            to_p += "{}\n".format(tr)
+
+        return to_p
+
     
     @property
     def start(self):
@@ -360,8 +394,8 @@ class Gene:
             self.transcripts[transcript_id].interval = interval
 
 
-    
-def get_attr(string):
+REG = re.compile(r'(\w+)\s+"([^"]*)"')
+def get_attr(string, reg=REG):
     """
     Parse a GTF attribute string into a key-value dictionary.
 
@@ -388,16 +422,20 @@ def get_attr(string):
         at ERROR level.
     """
     dico = {}
-    spt = string.split(";")
-    
-    for element in spt:
-        if element: # test if the string is not empty may happend.
-            try:
-                (key, value) = element.split(maxsplit=1)
-                dico[key.strip()] = value.replace('"', "").strip() 
-            except:
-                logging.error("failed to parse line {}".format(spt))
-                raise
+
+    for (key, value) in reg.findall(string):
+        try:
+            this_key = key.strip()
+            if this_key in dico:
+                v = dico[this_key]
+                if not isinstance(v, list):
+                    dico[this_key] = [v]
+                dico[this_key].append(value)
+            else:
+                dico[this_key] = value.replace('"', "").strip() 
+        except:
+            logging.error("failed to parse line {}".format(string))
+            raise
     return dico
 
 
@@ -534,6 +572,8 @@ def gtf_to_dict(gtf_file, primary_key = "gene_id"):
             # if not a transcript pass
             if (transcript_id  := attr.get("transcript_id", None)):
                 transcript_symbol = attr.get("transcript_symbol", None)
+                if not transcript_symbol:
+                    transcript_symbol = attr.get("transcript_name", None)
                 dico[gene_id]._parse_transcript_line(transcript_id, transcript_symbol, this_interval, type_)
 
 
