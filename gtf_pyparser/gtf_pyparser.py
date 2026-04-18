@@ -43,6 +43,8 @@ class Interval:
     phase: int = "."
     attribute: dict[str, str] = field(default_factory=dict)
 
+    def __hash__(self):
+        return hash((self.chr_, self.start, self.end, self.strand))
 
     def __repr__(self):
         return "{}:{}-{}({})".format(self.chr, self.start, self.end, self.strand)
