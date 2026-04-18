@@ -7,6 +7,7 @@ import sys
 
 log = logging.getLogger(__name__)
 # usage logging.getLogger("gtf").set Level(logging.WARNING)      # silence gtf
+REG_POS_STR = re.compile(r"(\w+):(\d+)-?(\d+)?\(?([\+\-])?\)?")
 
 @dataclass(frozen=True)
 class Interval:
@@ -46,7 +47,24 @@ class Interval:
     def __repr__(self):
         return "{}:{}-{}({})".format(self.chr, self.start, self.end, self.strand)
 
-    def from_dict(dict):
+    @classmethod
+    def from_position_str(cls, string):
+        res = {}
+        if (m := REG_POS_STR.match(string)):
+            res["chr_"] = m.group(1)
+            res["start"] = int(m.group(2))
+            if (g := m.group(3)):
+                res["end"] = int(m.group(3))
+            if (g := m.group(4)):
+                res["strand"] = m.group(4)
+        if not res: 
+            raise AssertionError("unbale to process: {} into interval".format(string))
+        if ("strand" not in res) or ("end" not in res):
+            raise AssertionError("unbale to process: {} into interval, lack 'end' or 'strand'".format(string))
+        return Interval(res["chr_"], res["start"], res["end"], res['strand'])
+    
+    @classmethod    
+    def from_dict(cls, dict):
         """
         chr, start, end, strand must be present or it will return a KeyError
         will also look for phase and attribute
@@ -63,7 +81,7 @@ class Interval:
         else:
             return Interval(chr_, start, end, strand, phase)
     
-    @property
+
     def to_dict(self):
         return asdict(self)
 
@@ -80,13 +98,16 @@ class Interval:
     
 
     def overlaps(self, other, strand_aware=True, semi_closed=False):
-        if strand_aware and self.strand != other["strand"]:
+        """
+        other is an intervall you can use Interval.from_dict() for conversion
+        """
+        if strand_aware and self.strand != other.strand:
             return False
         if not semi_closed:
-            if (self.end < other["start"]) or (self.start > other["end"]):
+            if (self.end < other.start) or (self.start > other.end):
                 return False
         else:
-            if (self.end <= other["start"]) or (self.start >= other["end"]):
+            if (self.end <= other.start) or (self.start >= other.end):
                 return False
         return True
     
@@ -236,11 +257,11 @@ class Transcript:
         for exon in self.exons:
             if exon.contains(position=position, strand=strand, strand_aware=strand_aware, semi_closed=semi_closed):
                 if exon.start == position:
-                    if "strand" == "+":
+                    if strand == "+":
                         return "junctionAcceptor"
                     return "junctionDonnor"
                 elif exon.end == position:
-                    if "strand" != "+":
+                    if strand != "+":
                         return "junctionAcceptor"
                     return "junctionDonnor"
                 else:
@@ -322,6 +343,19 @@ class Gene:
 
         return to_p
 
+    @property
+    def exon(self):
+        res = []
+        for tr_id, tr in self.transcripts.items():
+            res.append((self.gene_id, tr_id, tr.exons))
+        return res
+    
+    @property
+    def intron(self):
+        res = []
+        for tr_id, tr in self.transcripts.items():
+            res.append((self.gene_id, tr_id, tr.intron))
+        return res
     
     @property
     def start(self):
@@ -636,6 +670,9 @@ def get_intron(exons: list[Interval]):
         this_n += 1 if exon_sorted[0].strand == "+" else -1
         
         introns.append(Interval(chr_=e.chr, start=e0, end=e1, strand=strand, phase=".", attribute=attr))
-
+        if strand == "-":
+            introns = sorted(introns, key=lambda x: x.start, reverse=True)
+        else:
+            introns = sorted(introns, key=lambda x: x.start, reverse=False)
     return introns
 
