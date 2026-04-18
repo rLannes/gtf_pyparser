@@ -164,7 +164,7 @@ class Transcript:
     # def from_dict():
     @property
     def exons(self):
-        return self.features.get("exon")
+        return self.features.get("exon", [])
     
 
     def __repr__(self):
