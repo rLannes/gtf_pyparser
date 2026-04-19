@@ -43,6 +43,9 @@ class Interval:
     phase: int = "."
     attribute: dict[str, str] = field(default_factory=dict)
 
+    def __getitem__(self, key):
+        return getattr(self, key)
+    
     def __hash__(self):
         return hash((self.chr_, self.start, self.end, self.strand))
 
