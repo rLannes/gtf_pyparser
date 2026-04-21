@@ -346,7 +346,7 @@ class Gene:
         for tr_id, tr in self.transcripts.items():
             to_p += "{}\n".format(tr)
 
-        return to_p
+        return to_p.strip()
 
     @property
     def exon(self):
