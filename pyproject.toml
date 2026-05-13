@@ -4,11 +4,10 @@ build-backend =  "setuptools.build_meta"
 
 [project]
 name = "gtf_pyparser"
-version = "0.2.0b1"
 dynamic = ["version"]
 description = "A lightweight, dependency-free GTF parser returning a structured Gene/Transcript/Interval object model."
 readme = "README.md"
-license = { text = "CC-BY-4.0" }
+license = { text = "MIT" }
 authors = [
     { name = "Romain Lannes", email = "rlannes@wi.mit.edu" }
 ]

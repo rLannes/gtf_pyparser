@@ -11,15 +11,15 @@ Most GTF parsing libraries are either too heavy (requiring pandas, SQLite, or la
 ## Installation
 
 ```bash
-pip install gtf
+pip install gtf_pyparser
 ```
 
 ## Quick start
 
 ```python
-import gtf
+import gtf_pyparser
 
-genes = gtf.parse_gtf("Homo_sapiens.GRCh38.gtf")
+genes = gtf_pyparser.parse_gtf("Homo_sapiens.GRCh38.gtf")
 
 gene = genes["ENSG00000139618"]
 print(gene.symbol, gene.start, gene.end)
@@ -43,8 +43,8 @@ All coordinates are **0-based half-open** (start inclusive, end exclusive), cons
 Parse a GTF file into a dictionary of `Gene` objects.
 
 ```python
-genes = gtf.parse_gtf("annotation.gtf")
-genes = gtf.parse_gtf("annotation.gtf", primary_key="gene_name")
+genes = gtf_pyparser.parse_gtf("annotation.gtf")
+genes = gtf_pyparser.parse_gtf("annotation.gtf", primary_key="gene_name")
 ```
 
 - **`gtf_file`** — path to the GTF file
@@ -56,7 +56,7 @@ genes = gtf.parse_gtf("annotation.gtf", primary_key="gene_name")
 Parse a raw GTF attribute string into a key-value dictionary. Useful when processing GTF lines outside of the full parser.
 
 ```python
-attrs = gtf.get_attr('gene_id "ENSG00000139618"; gene_name "BRCA2";')
+attrs = gtf_pyparser.get_attr('gene_id "ENSG00000139618"; gene_name "BRCA2";')
 # {"gene_id": "ENSG00000139618", "gene_name": "BRCA2"}
 ```
 
@@ -68,7 +68,7 @@ Derive intron intervals from a list of exon `Interval` objects belonging to a si
 
 ```python
 exons = transcript.features.get("exon", [])
-introns = gtf.get_intron(exons)
+introns = gtf_pyparser.get_intron(exons)
 ```
 
 - **`exons`** — list of `Interval`, need not be pre-sorted
@@ -117,13 +117,13 @@ Convenience properties: `start`, `end`, `phase`, `attribute`, `biotype`, `has_tr
 
 ## Logging
 
-Progress and error messages are emitted under the `"gtf"` logger. To suppress informational output:
+Progress and error messages are emitted under the `"gtf_pyparser"` logger. To suppress informational output:
 
 ```python
 import logging
-logging.getLogger("gtf").setLevel(logging.WARNING)
+logging.getLogger("gtf_pyparser").setLevel(logging.WARNING)
 ```
 
 ## License
-CC-BY-4
+MIT
 Citation aknowledge : Romain Lannes 2026
