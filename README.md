@@ -1,10 +1,10 @@
-# gtf
+# gtf_pyparser
 
 A lightweight, dependency-free Python library for parsing GTF (Gene Transfer Format) files into a structured object model.
 
-## Why gtf?
+## Why gtf_pyparser?
 
-Most GTF parsing libraries are either too heavy (requiring pandas, SQLite, or large C extensions) or return flat data structures that don't reflect the natural hierarchy of genomic annotation. `gtf` gives you a clean `Gene → Transcript → features` object model with no dependencies beyond the Python standard library.
+Most GTF parsing libraries are either too heavy (requiring pandas, SQLite, or large C extensions) or return flat data structures that don't reflect the natural hierarchy of genomic annotation. `gtf_pyparser` gives you a clean `Gene → Transcript → features` object model with no dependencies beyond the Python standard library.
 
 ### Curently working on direct acces indexing by name and position.
 
