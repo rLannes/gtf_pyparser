@@ -3,6 +3,7 @@ from dataclasses import dataclass, field, asdict
 import re
 import logging
 import sys
+import weakref
 
 
 log = logging.getLogger(__name__)
@@ -46,6 +47,12 @@ class Interval:
     def __getitem__(self, key):
         return getattr(self, key)
     
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+        
     def __hash__(self):
         return hash((self.chr_, self.start, self.end, self.strand))
 
@@ -480,7 +487,9 @@ def get_attr(string, reg=REG):
 
 class Gtf():
     
-    def __init__(self):
+    def __init__(self, gtf_file):
+        self.gtf_file = gtf_file
+        self.it = None
         self.dict = {}
 
     def __setitem__(self, key, value):
@@ -509,6 +518,36 @@ class Gtf():
 
     def items(self):
         return self.dict.items()
+    
+    """
+    def overlap(self):
+        pass
+
+    def at(self):
+        pass
+
+    def build_it(self):
+        pass 
+    """
+        
+
+
+    """def gtf_to_pkl(self):
+
+        pkl_file = str(self.gtf_file) + ".pbi"
+        it_file = self(self.pkl_file) + ".bit"
+        bi_file = self(self.pkl_file) + ".bi"
+
+        logging.info("creating index found:\n - {}\n - {}\n - {}".format(pkl_file, bi_file, it_file))
+            
+        with open(pkl_file, "wb") as fo, open(bi_file, "w") as findex:
+            
+            for g in gtf:
+                before = fo.tell()
+                pickle.dump(gtf[g], fo)
+                size = fo.tell() - before
+                findex.write("\t".join([g, str(before), str(size)])+"\n")
+    """
 
     # TODO 
     # def to_dict():
@@ -517,6 +556,67 @@ class Gtf():
     # becasue the lib is no dependancy the import will be maden only if user use this function.
     # number genes, avergae gene length, gene by chromosome etc....
 
+"""
+
+
+class IndexGtf():
+
+    def __init__(self, pkl_file, it_file, bi_file):
+        
+        self.pkl_file = pkl_file
+        self.index = load_index(bi_file)
+        self.it = load_it(it_file)
+
+        self.open_gtf_file = open(self.pkl_file, "rb")
+        self._finalizer = weakref.finalize(self, self.open_gtf_file.close)
+    
+    def load_index(bi_file):
+        with open(bi_file, "r") as fi:
+            index = {}
+            for l in fi:
+                l = l.strip()
+                if not l:
+                    continue
+                spt = l.split()
+                index[spt[0]] = (int(spt[1]), int(spt[2]))
+        return index
+
+    def load_it(it_file):
+        with open(it_file, "rb") as fi:
+            index = pkl.load(fi)
+        return index
+    
+    def close(self):
+        self._finalizer()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    def overlap(self, start, end):
+        
+    def at(self, position):
+
+    def __getitem__(self, index):
+    
+        if index not in self.index:
+            raise KeyError("{} not in index".format(index))
+        
+        start, len_ = self.index[index]
+        
+        self.open_gtf_file.seek(start)
+        x = pickle.loads(fo.read(len_))
+
+        return x
+
+        
+def index():
+    pass
+    
+    
+"""
 
 # Should main dico be a dataclass to or an object I could implement getitem setitem on it so it behave like a dict but I will have method on top of it
 
@@ -561,7 +661,7 @@ def gtf_to_dict(gtf_file, primary_key = "gene_id"):
     feature lists; bare gene-level records are used solely to set gene coordinates.
     Additionaly each Interval carries "feature_": <feature type / 3rd field of the file> attribute.
     """
-    dico = Gtf()
+    dico = Gtf(gtf_file)
 
     log.info("reading gtf file {} into a dict".format(gtf_file))
     with open(gtf_file) as f_in:

@@ -4,6 +4,7 @@ build-backend =  "setuptools.build_meta"
 
 [project]
 name = "gtf_pyparser"
+version = "0.2.0b1"
 dynamic = ["version"]
 description = "A lightweight, dependency-free GTF parser returning a structured Gene/Transcript/Interval object model."
 readme = "README.md"
@@ -13,7 +14,7 @@ authors = [
 ]
 keywords = ["bioinformatics", "GTF", "genomics", "RNA-seq", "annotation"]
 classifiers = [
-    "Development Status :: 5 - Stable",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Programming Language :: Python :: 3",
@@ -40,3 +41,9 @@ write_to = "gtf/_version.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[project.urls]
+Homepage = "https://github.com/rLannes/gtf_pyparser"
+Repository = "https://github.com/rLannes/gtf_pyparser"
+Issues = "https://github.com/rLannes/gtf_pyparser/issues"
+
