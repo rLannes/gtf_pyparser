@@ -525,6 +525,8 @@ class Gene:
         """Reading frame phase of the gene's own interval."""
         return self.interval.phase
 
+
+
     def classify_position(self, position, strand, strand_aware=True):
         """
         Classify a genomic position against every transcript of this gene.
