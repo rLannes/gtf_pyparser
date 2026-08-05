@@ -615,7 +615,7 @@ def get_attr(string, reg=REG):
     Parse a GTF attribute string into a key-value dictionary.
 
     GTF attribute fields consist of semicolon-separated tag-value pairs, where each
-    pair has the form ``tag "value"`` or ``tag value``. Surrounding whitespace and
+    pair has the form ``tag "value"``. Surrounding whitespace and
     double quotes are stripped from values.
 
     Parameters
