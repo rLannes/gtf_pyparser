@@ -1,6 +1,6 @@
 """
-gtf_manipulation — lightweight GTF parsing library
-======================================
+gtf_pyparser — lightweight GTF parsing library
+==============================================
 
 A small, dependency-free library for parsing GTF (Gene Transfer Format) files
 into an in-memory object model. The primary use case is bioinformatics pipelines
@@ -18,26 +18,26 @@ Typical usage
 -------------
 Load a GTF file and iterate over genes and their transcripts::
 
-    import gtf
+    import gtf_pyparser
 
-    genes = gtf.parse_gtf("Homo_sapiens.GRCh38.gtf")
+    genes = gtf_pyparser.parse_gtf("Homo_sapiens.GRCh38.gtf")
 
     gene = genes["ENSG00000139618"]
     print(gene.symbol, gene.start, gene.end)
 
-    for transcript_id, transcript in gene.transcript.items():
+    for transcript_id, transcript in gene.transcripts.items():
         exons = transcript.features.get("exon", [])
-        introns = gtf.get_intron(exons)
+        introns = gtf_pyparser.get_intron(exons)
         print(f"  {transcript_id}: {len(exons)} exons, {len(introns)} introns")
 
 Silencing log output
 --------------------
 The parser emits progress and error messages through the standard
-:mod:`logging` module under the logger named ``"gtf"``. To suppress
+:mod:`logging` module under the logger named ``"gtf_pyparser"``. To suppress
 informational output::
 
     import logging
-    logging.getLogger("gtf").setLevel(logging.WARNING)
+    logging.getLogger("gtf_pyparser").setLevel(logging.WARNING)
 
 Public API
 ----------
@@ -66,6 +66,10 @@ from .gtf_pyparser import (
     get_attr,
     gtf_to_dict as parse_gtf,
 )
+try:
+    from ._version import version as __version__
+except ImportError:
+    __version__ = "unknown"
 
 __all__ = [
     "Interval",
@@ -74,4 +78,5 @@ __all__ = [
     "get_intron",
     "get_attr",
     "parse_gtf",
+    "__version__",
 ]

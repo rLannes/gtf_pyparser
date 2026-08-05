@@ -6,7 +6,9 @@ A lightweight, dependency-free Python library for parsing GTF (Gene Transfer For
 
 Most GTF parsing libraries are either too heavy (requiring pandas, SQLite, or large C extensions) or return flat data structures that don't reflect the natural hierarchy of genomic annotation. `gtf_pyparser` gives you a clean `Gene → Transcript → features` object model with no dependencies beyond the Python standard library.
 
-### Curently working on direct acces indexing by name and position.
+### Roadmap
+
+Currently working on direct access / indexing by name and position.
 
 ## Installation
 
@@ -24,9 +26,9 @@ genes = gtf_pyparser.parse_gtf("Homo_sapiens.GRCh38.gtf")
 gene = genes["ENSG00000139618"]
 print(gene.symbol, gene.start, gene.end)
 
-for transcript_id, transcript in gene.transcript.items():
+for transcript_id, transcript in gene.transcripts.items():
     exons = transcript.features.get("exon", [])
-    introns = gtf.get_intron(exons)
+    introns = gtf_pyparser.get_intron(exons)
     print(f"  {transcript_id}: {len(exons)} exons, {len(introns)} introns")
 ```
 
@@ -38,9 +40,9 @@ All coordinates are **0-based half-open** (start inclusive, end exclusive), cons
 
 ### Parsing
 
-#### `gtf.parse_gtf(gtf_file, primary_key="gene_id")`
+#### `gtf_pyparser.parse_gtf(gtf_file, primary_key="gene_id")`
 
-Parse a GTF file into a dictionary of `Gene` objects.
+Parse a GTF file into a dict-like container of `Gene` objects, keyed by `primary_key`.
 
 ```python
 genes = gtf_pyparser.parse_gtf("annotation.gtf")
@@ -48,10 +50,10 @@ genes = gtf_pyparser.parse_gtf("annotation.gtf", primary_key="gene_name")
 ```
 
 - **`gtf_file`** — path to the GTF file
-- **`primary_key`** — attribute used to key the returned dictionary (default: `"gene_id"`)
-- **Returns** — `dict[str, Gene]`
+- **`primary_key`** — attribute used to key the returned container (default: `"gene_id"`)
+- **Returns** — a `Gtf` object supporting indexing, `in`, `len`, iteration, and `.keys()`/`.values()`/`.items()`, exactly like `dict[str, Gene]`
 
-#### `gtf.get_attr(string)`
+#### `gtf_pyparser.get_attr(string)`
 
 Parse a raw GTF attribute string into a key-value dictionary. Useful when processing GTF lines outside of the full parser.
 
@@ -60,9 +62,11 @@ attrs = gtf_pyparser.get_attr('gene_id "ENSG00000139618"; gene_name "BRCA2";')
 # {"gene_id": "ENSG00000139618", "gene_name": "BRCA2"}
 ```
 
+Repeated attribute keys (e.g. multiple `tag "..."` entries) are collected into a list instead of overwriting each other.
+
 ### Derived features
 
-#### `gtf.get_intron(exons)`
+#### `gtf_pyparser.get_intron(exons)`
 
 Derive intron intervals from a list of exon `Interval` objects belonging to a single transcript. Introns are numbered biologically: from 1 upward on the `+` strand, and from n down to 1 on the `-` strand.
 
@@ -74,11 +78,22 @@ introns = gtf_pyparser.get_intron(exons)
 - **`exons`** — list of `Interval`, need not be pre-sorted
 - **Returns** — `list[Interval]`, empty if fewer than two exons are provided
 
+### Position classification
+
+`Transcript.classify_position(position, strand, strand_aware=True)` and `Gene.classify_position(position, strand, strand_aware=True)` classify a 0-based genomic position relative to a transcript's (or every transcript of a gene's) exon/intron structure.
+
+```python
+gene.classify_position(150, "+")
+# {"ENST00000001": "exon", "ENST00000002": "intron"}
+```
+
+Returns one of `"geneStart"`, `"geneEnd"`, `"exon"`, `"intron"`, `"junctionDonnor"`, `"junctionAcceptor"`, or `None` if the position falls outside the feature's span. `Gene.classify_position` returns a `dict[transcript_id, result]` covering every transcript on the gene.
+
 ### Data classes
 
 #### `Interval`
 
-Immutable genomic coordinate record. All `Interval` objects are frozen — they are replaced rather than mutated when coordinates need updating.
+Immutable (frozen) genomic coordinate record — replaced rather than mutated when coordinates need updating.
 
 | Attribute   | Type          | Description                                              |
 |-------------|---------------|----------------------------------------------------------|
@@ -88,6 +103,16 @@ Immutable genomic coordinate record. All `Interval` objects are frozen — they 
 | `strand`    | `str`         | `"+"`, `"-"`, or `"."` for unstranded                   |
 | `phase`     | `int` or `str`| Reading frame (0, 1, 2), or `"."` if not applicable     |
 | `attribute` | `dict`        | Key-value pairs from the GTF attribute column            |
+
+Other properties: `length`, `position` (dict with just chr/start/end/strand).
+
+Methods:
+
+- `overlaps(other, strand_aware=True, closed=False)` / `contains(position, strand, strand_aware=True, closed=False)` — half-open by default (touching intervals don't overlap; `position == end` isn't contained); pass `closed=True` to treat both endpoints as inclusive.
+- `eq_pos(other)` — compare genomic position and strand only, ignoring phase/attribute.
+- `clone()` — return a copy with its own independent `attribute` dict.
+- `to_dict()` / `Interval.from_dict(dict_)` — round-trip through a plain dict.
+- `Interval.from_position_str(string, is_one_based=False)` — parse a `"chr:start-end(strand)"` string; pass `is_one_based=True` to convert from 1-based inclusive (GTF/samtools region notation) to this class's 0-based half-open convention.
 
 #### `Transcript`
 
@@ -100,20 +125,20 @@ Groups all GTF records sharing a `transcript_id`. The genomic span always reflec
 | `interval`          | `Interval`                    | Current genomic span of the transcript   |
 | `features`          | `dict[str, list[Interval]]`   | Feature type → list of intervals         |
 
-Convenience properties: `start`, `end`, `phase`, `attribute`.
+Convenience properties: `start`, `end`, `chr`, `phase`, `length`, `attribute` (of the transcript's own interval), `exons`, `exons_positions`, `intron` (derived via `get_intron`), `cds`, `mrna`, `utr_5p`, `utr_3p`.
 
 #### `Gene`
 
 A gene locus containing one or more transcript isoforms.
 
-| Attribute    | Type                      | Description                                                        |
-|--------------|---------------------------|--------------------------------------------------------------------|
-| `gene_id`    | `str`                     | Primary identifier (e.g. Ensembl gene ID)                          |
-| `symbol`     | `str`                     | Gene symbol, resolved from `gene_symbol`, `gene_name`, or `gene_id`|
-| `interval`   | `Interval`                | Genomic span from the GTF `gene` record                            |
-| `transcript` | `dict[str, Transcript]`   | Transcript ID → Transcript                                         |
+| Attribute     | Type                      | Description                                                        |
+|---------------|---------------------------|--------------------------------------------------------------------|
+| `gene_id`     | `str`                     | Primary identifier (e.g. Ensembl gene ID)                          |
+| `symbol`      | `str`                     | Gene symbol, resolved from `gene_symbol`, `gene_name`, or `gene_id`|
+| `interval`    | `Interval`                | Genomic span from the GTF `gene` record                            |
+| `transcripts` | `dict[str, Transcript]`   | Transcript ID → Transcript                                         |
 
-Convenience properties: `start`, `end`, `phase`, `attribute`, `biotype`, `has_transcript`.
+Convenience properties: `start`, `end`, `chr`, `phase`, `length`, `attribute`, `biotype` (checks `biotype`, `gene_biotype`, then `gene_type`), `transcript_names`, `transcript_length`, `has_transcript`, `has_exon`, `exon` / `intron` (list of `(gene_id, transcript_id, ...)` tuples across all transcripts).
 
 ## Logging
 
@@ -124,6 +149,18 @@ import logging
 logging.getLogger("gtf_pyparser").setLevel(logging.WARNING)
 ```
 
+## Versioning
+
+`gtf_pyparser.__version__` reflects the installed package's version, derived from git tags via `setuptools_scm`. In an unbuilt source checkout (no install step run yet) it falls back to `"unknown"`.
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
 ## License
 MIT
-Citation aknowledge : Romain Lannes 2026
+
+Citation / acknowledgement: Romain Lannes 2026

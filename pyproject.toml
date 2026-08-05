@@ -36,10 +36,11 @@ where = ["."]
 include = ["gtf*"]
 
 [tool.setuptools_scm]
-write_to = "gtf/_version.py"
+write_to = "gtf_pyparser/_version.py"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["gtf_pyparser"]
+python_files = ["test*.py"]
 
 [project.urls]
 Homepage = "https://github.com/rLannes/gtf_pyparser"

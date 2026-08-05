@@ -6,6 +6,8 @@ __pycache__/
 # C extensions
 *.so
 
+todo
+
 # Distribution / packaging
 .Python
 build/
@@ -23,6 +25,7 @@ wheels/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
+gtf_pyparser/_version.py
 *.egg
 MANIFEST
 

@@ -1,4 +1,12 @@
-import copy
+"""
+Core data model and parser for gtf_pyparser.
+
+Defines the Interval/Transcript/Gene object model and the gtf_to_dict parser
+that builds it from a GTF file. This module is the implementation behind the
+public API re-exported by gtf_pyparser/__init__.py; import from the package
+root rather than from here directly.
+"""
+
 from dataclasses import dataclass, field, asdict
 import re
 import logging
@@ -7,7 +15,7 @@ import weakref
 
 
 log = logging.getLogger(__name__)
-# usage logging.getLogger("gtf").set Level(logging.WARNING)      # silence gtf
+# usage logging.getLogger("gtf_pyparser").setLevel(logging.WARNING)      # silence gtf_pyparser
 REG_POS_STR = re.compile(r"(\w+):(\d+)-?(\d+)?\(?([\+\-])?\)?")
 
 @dataclass(frozen=True)
@@ -45,48 +53,96 @@ class Interval:
     attribute: dict[str, str] = field(default_factory=dict)
 
     def __getitem__(self, key):
+        """Dict-like attribute access, e.g. interval["start"]."""
         return getattr(self, key)
-    
+
     def get(self, key, default=None):
+        """Dict-like attribute access with a fallback default instead of raising."""
         try:
             return self[key]
         except KeyError:
             return default
-        
+
     def __hash__(self):
+        """Hash based on genomic position and strand only (attribute/phase excluded)."""
         return hash((self.chr_, self.start, self.end, self.strand))
 
     def __repr__(self):
+        """Compact ``chr:start-end(strand)`` representation."""
         return "{}:{}-{}({})".format(self.chr, self.start, self.end, self.strand)
 
     @classmethod
-    def from_position_str(cls, string):
+    def from_position_str(cls, string, is_one_based=False):
+        """
+        Parse a ``chr:start-end(strand)`` style string into an Interval.
+
+        Parameters
+        ----------
+        string : str
+            Position string matching REG_POS_STR, e.g. ``"chr1:100-200(+)"``.
+            ``end`` and ``strand`` are optional in the pattern but required
+            for a valid Interval (see Raises).
+        is_one_based : bool, optional
+            If True, treat ``start`` as a 1-based inclusive coordinate (as in
+            GTF/samtools region notation) and convert it to 0-based by
+            subtracting 1, matching the convention used by gtf_to_dict.
+            ``end`` is left unchanged, matching 1-based-inclusive ->
+            0-based-half-open conversion. Defaults to False.
+
+        Returns
+        -------
+        Interval
+
+        Raises
+        ------
+        AssertionError
+            If the string doesn't match REG_POS_STR, or if it lacks an
+            ``end`` or ``strand`` component.
+        """
         res = {}
         if (m := REG_POS_STR.match(string)):
             res["chr_"] = m.group(1)
             res["start"] = int(m.group(2))
+            if is_one_based:
+                res["start"] -= 1
+                    
             if (g := m.group(3)):
                 res["end"] = int(m.group(3))
             if (g := m.group(4)):
                 res["strand"] = m.group(4)
+
         if not res: 
             raise AssertionError("unbale to process: {} into interval".format(string))
         if ("strand" not in res) or ("end" not in res):
             raise AssertionError("unbale to process: {} into interval, lack 'end' or 'strand'".format(string))
         return Interval(res["chr_"], res["start"], res["end"], res['strand'])
     
-    @classmethod    
-    def from_dict(cls, dict):
+    @classmethod
+    def from_dict(cls, dict_):
         """
-        chr, start, end, strand must be present or it will return a KeyError
-        will also look for phase and attribute
+        Build an Interval from a plain dict.
+
+        Parameters
+        ----------
+        dict_ : dict
+            Must contain ``chr``, ``start``, ``end``, ``strand``. May also
+            contain ``phase`` and ``attribute``.
+
+        Returns
+        -------
+        Interval
+
+        Raises
+        ------
+        KeyError
+            If ``chr``, ``start``, ``end``, or ``strand`` is missing.
         """
-        chr_ = dict["chr"]
-        start = int(dict["start"])
-        end = int(dict["end"])
-        strand = dict["strand"]
-        phase = dict.get("phase", ".")
-        attr =  dict.get("attribute")
+        chr_ = dict_["chr"]
+        start = int(dict_["start"])
+        end = int(dict_["end"])
+        strand = dict_["strand"]
+        phase = dict_.get("phase", ".")
+        attr =  dict_.get("attribute")
 
         if attr:
             return Interval(chr_, start, end, strand, phase, attr)
@@ -95,10 +151,25 @@ class Interval:
     
 
     def to_dict(self):
+        """Return a plain dict with all fields, suitable for Interval.from_dict()."""
         return asdict(self)
+
+    def clone(self):
+        """
+        Return a new Interval with its own independent attribute dict.
+
+        Cheaper than copy.deepcopy(interval): the other fields (chr_, start,
+        end, strand, phase) are immutable and frozen, so only the mutable
+        attribute dict needs copying. Values that are lists (repeated GTF
+        attribute keys, e.g. multiple "tag" entries) are copied one level
+        deep so mutating one clone's list doesn't affect another's.
+        """
+        attr = {k: (list(v) if isinstance(v, list) else v) for k, v in self.attribute.items()}
+        return Interval(self.chr_, self.start, self.end, self.strand, self.phase, attr)
 
     @property
     def length(self):
+        """Length in bases (end - start)."""
         return self.end - self.start
 
     @property
@@ -109,36 +180,55 @@ class Interval:
         return {"chr": self.chr, "start": self.start, "end": self.end, "strand": self.strand}
     
 
-    def overlaps(self, other, strand_aware=True, semi_closed=False):
+    def overlaps(self, other, strand_aware=True, closed=False):
         """
         other is an intervall you can use Interval.from_dict() for conversion
+
+        By default coordinates follow the class' 0-based half-open convention,
+        so two intervals that only touch (self.end == other["start"]) do not
+        overlap. Pass closed=True to treat both endpoints as inclusive instead.
         """
-        if strand_aware and self.strand != other.strand:
+        if strand_aware and self.strand != other["strand"]:
             return False
-        if not semi_closed:
-            if (self.end < other.start) or (self.start > other.end):
+        if closed:
+            if (self.end < other["start"]) or (self.start > other["end"]):
                 return False
         else:
-            if (self.end <= other.start) or (self.start >= other.end):
+            if (self.end <= other["start"]) or (self.start >= other["end"]):
                 return False
         return True
-    
-    def contains(self, position, strand, strand_aware=True, semi_closed=False):
+
+    def contains(self, position, strand, strand_aware=True, closed=False):
+        """
+        By default coordinates follow the class' 0-based half-open convention,
+        so position == self.end is not contained. Pass closed=True to treat
+        self.end as inclusive instead.
+        """
         if strand_aware and self.strand != strand:
             return False
-        if semi_closed:
-            if self.start <= position < self.end:
+        if closed:
+            if self.start <= position <= self.end:
                 return True
         else:
-            if self.start <= position <= self.end:
+            if self.start <= position < self.end:
                 return True
         return False
     
     def eq_pos(self, other):
-        return self.chr == other.chr and self.start == other.start and self.end == other.end and self.strand == other.strand
-    
+        """
+        Compare genomic position and strand only (ignores phase/attribute).
+
+        Parameters
+        ----------
+        other : dict-like
+            Must support ``["chr"]``, ``["start"]``, ``["end"]``, ``["strand"]``
+            — an Interval or a dict with those keys both work.
+        """
+        return self.chr == other["chr"] and self.start == other["start"] and self.end == other["end"] and self.strand == other["strand"]
+
     @property
     def chr(self):
+        """Chromosome name (alias for chr_, since chr is a reserved keyword)."""
         return self.chr_
 
 @dataclass
@@ -174,10 +264,11 @@ class Transcript:
     # def from_dict():
     @property
     def exons(self):
+        """List of exon Intervals, or [] if none were recorded."""
         return self.features.get("exon", [])
-    
 
     def __repr__(self):
+        """Multi-line human-readable summary: id, symbol, length, span, exon count."""
         to_p = "Transcript: transcript_id {}; transcript_symbol: {}, length: {}\n".format(self.transcript_id, self.transcript_symbol, self.interval.length)
         to_p += "{}\n".format(self.interval)
 
@@ -186,25 +277,29 @@ class Transcript:
         return to_p
 
     @property
-    def cds(self): 
+    def cds(self):
+        """List of CDS Intervals (checks 'CDS' then 'cds'), or None if absent."""
         if (cds := self.features.get("CDS")):
-            return cds 
+            return cds
         if (cds := self.features.get("cds")):
-            return cds 
-    
+            return cds
+
     @property
     def mrna(self):
+        """List of mRNA Intervals (checks 'mRNA' then 'transcript'), or None if absent."""
         if (mrna := self.features.get("mRNA")):
-            return mrna 
+            return mrna
         if (mrna := self.features.get("transcript")):
-            return mrna 
+            return mrna
 
     @property
     def length(self):
+        """Length of the transcript's genomic span, in bases."""
         return self.interval.length
-    
+
     @property
     def utr_5p(self):
+        """List of 5' UTR Intervals ('5UTR' for FlyBase, 'five_prime_utr' for Ensembl), or None."""
         if (utr := self.features.get("5UTR")):
             return utr # flybase
         if (utr := self.features.get("five_prime_utr")): # ensembl
@@ -212,53 +307,79 @@ class Transcript:
 
     @property
     def utr_3p(self):
+        """List of 3' UTR Intervals ('3UTR' for FlyBase, 'three_prime_utr' for Ensembl), or None."""
         if (utr := self.features.get("3UTR")  ):
             return utr # flybase
         if (utr := self.features.get("three_prime_utr")): # ensembl
             return utr
-        
+
     @property
     def exons_positions(self):
+        """List of exon positions (see Interval.position), or None if no exons."""
         if "exon" in self.features:
             return [x.position for x in self.features.get("exon")]
-        else: 
+        else:
             return None
 
     @property
     def attribute(self):
+        """GTF attribute dict of the transcript's own interval (not per-feature)."""
         return self.interval.attribute
 
     @property
     def start(self):
+        """0-based start of the transcript's genomic span."""
         return self.interval.start
     
     @property
     def chr(self):
+        """Chromosome name of the transcript's genomic span."""
         return self.interval.chr
-    
+
     @property
     def end(self):
+        """0-based exclusive end of the transcript's genomic span."""
         return self.interval.end
 
     @property
     def phase(self):
+        """Reading frame phase of the transcript's own interval."""
         return self.interval.phase
-        
+
     @property
     def intron(self):
+        """List of intron Intervals derived from exons via get_intron(), or [] if <2 exons."""
         if len(self.exons) > 1:
             return get_intron(self.exons)
         else:
             return []
-        
-    @phase.setter
-    def phase(self, value):
-        self.interval.phase = value
 
-                
-    def classify_position(self, position, strand, strand_aware=True, semi_closed=False):
-        # -> "None", "exon", "intron", "junctionDonnor", "junctionAcceptor", "geneStart", "geneEnd"
-        if not self.interval.contains(position=position, strand=strand, strand_aware=strand_aware, semi_closed=semi_closed):
+
+
+    def classify_position(self, position, strand, strand_aware=True):
+        """
+        Classify a genomic position relative to this transcript.
+
+        Parameters
+        ----------
+        position : int
+            0-based genomic coordinate to classify.
+        strand : str
+            Strand to compare the position against; see strand_aware.
+        strand_aware : bool, optional
+            If True (default), positions on a different strand than the
+            transcript are treated as outside it (returns None).
+
+        Returns
+        -------
+        str or None
+            One of ``"geneStart"``, ``"geneEnd"``, ``"exon"``, ``"intron"``,
+            ``"junctionDonnor"``, ``"junctionAcceptor"``, or ``None`` if the
+            position falls outside the transcript's span.
+        """
+        # closed=True: boundary positions (position == interval.end) must stay
+        # "contained" so the geneEnd/junction checks below can ever be reached.
+        if not self.interval.contains(position=position, strand=strand, strand_aware=strand_aware, closed=True):
             return None
         if self.interval.start == position:
             return "geneStart"
@@ -267,7 +388,7 @@ class Transcript:
 
         # do they interesect with exon:
         for exon in self.exons:
-            if exon.contains(position=position, strand=strand, strand_aware=strand_aware, semi_closed=semi_closed):
+            if exon.contains(position=position, strand=strand, strand_aware=strand_aware, closed=True):
                 if exon.start == position:
                     if strand == "+":
                         return "junctionAcceptor"
@@ -316,30 +437,42 @@ class Gene:
 
     @property
     def length(self):
+        """Length of the gene's genomic span, in bases."""
         return self.interval.length
 
     @property
     def attribute(self):
+        """GTF attribute dict of the gene's own interval."""
         return self.interval.attribute
-    
+
     @property
     def transcript_names(self):
+        """List of transcript_id keys registered on this gene."""
         return list(self.transcripts.keys())
 
     @property
     def transcript_length(self):
+        """Number of transcripts registered on this gene."""
         return len(self.transcripts)
 
     @property
     def biotype(self):
-        return self.interval.attribute.get("biotype", None)
-    
+        """Value of ``biotype``, ``gene_biotype``, or ``gene_type`` (checked in that order), or None if all are absent."""
+        if (biotype := self.interval.attribute.get("biotype", None)):
+            return biotype
+        if (biotype := self.interval.attribute.get("gene_biotype", None)):
+            return biotype
+        if (biotype := self.interval.attribute.get("gene_type", None)):
+            return biotype
+
     @property
     def has_transcript(self):
+        """True if at least one transcript has been registered."""
         return len(self.transcripts) > 0
-    
+
     @property
     def has_exon(self):
+        """True if any registered transcript has at least one exon."""
         if not self.has_transcript:
             return False
         for tr_id, tr_item in self.transcripts.items():
@@ -348,6 +481,7 @@ class Gene:
         return False
 
     def __repr__(self):
+        """Multi-line human-readable summary of the gene and all its transcripts."""
         to_p = "Gene: gene_id: {}; gene_symbol: {}\n".format(self.gene_id, self.symbol)
         to_p += "{}\n".format(self.interval)
         for tr_id, tr in self.transcripts.items():
@@ -357,13 +491,15 @@ class Gene:
 
     @property
     def exon(self):
+        """List of (gene_id, transcript_id, exons) tuples, one per transcript."""
         res = []
         for tr_id, tr in self.transcripts.items():
             res.append((self.gene_id, tr_id, tr.exons))
         return res
-    
+
     @property
     def intron(self):
+        """List of (gene_id, transcript_id, introns) tuples, one per transcript."""
         res = []
         for tr_id, tr in self.transcripts.items():
             res.append((self.gene_id, tr_id, tr.intron))
@@ -371,26 +507,47 @@ class Gene:
     
     @property
     def start(self):
+        """0-based start of the gene's genomic span."""
         return self.interval.start
-    
+
     @property
     def end(self):
+        """0-based exclusive end of the gene's genomic span."""
         return self.interval.end
 
     @property
     def chr(self):
+        """Chromosome name of the gene's genomic span."""
         return self.interval.chr
 
     @property
     def phase(self):
+        """Reading frame phase of the gene's own interval."""
         return self.interval.phase
 
-    def classify_position(self, position, strand, strand_aware=True, semi_closed=False):
-        # look at all transcript and return all hit
-        # return -> dict[key] -> "None", "exon", "intron", "junctionDonnor", "junctionAcceptor", "geneStart", "geneEnd"
+    def classify_position(self, position, strand, strand_aware=True):
+        """
+        Classify a genomic position against every transcript of this gene.
+
+        Parameters
+        ----------
+        position : int
+            0-based genomic coordinate to classify.
+        strand : str
+            Strand to compare the position against; see strand_aware.
+        strand_aware : bool, optional
+            Forwarded to Transcript.classify_position. Defaults to True.
+
+        Returns
+        -------
+        dict[str, str or None]
+            Mapping of transcript_id to the classification returned by
+            Transcript.classify_position (see that method for the possible
+            values).
+        """
         res = {}
         for transcript_key, transcript_item in self.transcripts.items():
-            res[transcript_key] =  transcript_item.classify_position(position=position, strand=strand, strand_aware=strand_aware, semi_closed=semi_closed)
+            res[transcript_key] =  transcript_item.classify_position(position=position, strand=strand, strand_aware=strand_aware)
         return res
 
     # private helper method that delegate parsing transript out of the main loop
@@ -398,9 +555,10 @@ class Gene:
         """
         Register a single GTF feature record under the appropriate transcript.
 
-        If the transcript does not yet exist, it is initialised with a deep copy
-        of the provided interval as its initial span. The feature interval is
-        appended to the transcript's feature list for the given feature type.
+        If the transcript does not yet exist, it is initialised with a clone
+        (see Interval.clone) of the provided interval as its initial span.
+        The feature interval is appended to the transcript's feature list
+        for the given feature type.
         The transcript's genomic span is then updated if the new interval extends
         beyond the current known boundaries, replacing the interval object rather
         than mutating it in place.
@@ -425,19 +583,28 @@ class Gene:
         """
         if transcript_id not in self.transcripts:
             self.transcripts[transcript_id] = Transcript(transcript_id=transcript_id, transcript_symbol=transcript_symbol,
-                                                       interval=copy.deepcopy(interval))
-        
+                                                       interval=interval.clone())
+
         if feature not in self.transcripts[transcript_id].features:
             self.transcripts[transcript_id].features[feature] = []
-        self.transcripts[transcript_id].features[feature].append(copy.deepcopy(interval))
+        self.transcripts[transcript_id].features[feature].append(interval.clone())
         tr_i = self.transcripts[transcript_id].interval
 
-        if interval.start < self.transcripts[transcript_id].start:
-            interval = Interval(tr_i.chr, start=interval.start, end=tr_i.end, strand=tr_i.strand, phase=".", attribute=tr_i.attribute)
-            self.transcripts[transcript_id].interval = interval
-        if interval.end > self.transcripts[transcript_id].end:
-            interval = Interval(tr_i.chr, start=tr_i.start, end=interval.end, strand=tr_i.strand, phase=".", attribute=tr_i.attribute)
-            self.transcripts[transcript_id].interval = interval
+        new_start = min(interval.start, tr_i.start)
+        new_end = max(interval.end, tr_i.end)
+
+        if new_start != tr_i.start or new_end != tr_i.end:
+            self.transcripts[transcript_id].interval = Interval(
+                chr_=tr_i.chr, start=new_start, end=new_end, strand=tr_i.strand
+            )
+
+        # was a big because         
+        #if interval.start < self.transcripts[transcript_id].start:
+        #    interval = Interval(tr_i.chr, start=interval.start, end=tr_i.end, strand=tr_i.strand, phase=".", attribute=tr_i.attribute)
+        #    self.transcripts[transcript_id].interval = interval
+        #if interval.end > self.transcripts[transcript_id].end:
+        #    interval = Interval(tr_i.chr, start=tr_i.start, end=interval.end, strand=tr_i.strand, phase=".", attribute=tr_i.attribute)
+        #    self.transcripts[transcript_id].interval = interval
 
 
 REG = re.compile(r'(\w+)\s+"([^"]*)"')
@@ -480,43 +647,66 @@ def get_attr(string, reg=REG):
             else:
                 dico[this_key] = value.replace('"', "").strip() 
         except:
-            logging.error("failed to parse line {}".format(string))
+            log.error("failed to parse line {}".format(string))
             raise
     return dico
 
 
 class Gtf():
-    
+    """
+    Dict-like container of Gene objects, keyed by primary_key value.
+
+    This is the return type of gtf_to_dict: it behaves like a
+    dict[str, Gene] (supports indexing, ``in``, ``len``, iteration, and
+    ``keys``/``values``/``items``) while also tracking the source
+    ``gtf_file`` path it was built from.
+    """
+
     def __init__(self, gtf_file):
+        """
+        Parameters
+        ----------
+        gtf_file : str or path-like
+            Path to the GTF file this container was (or will be) built from.
+        """
         self.gtf_file = gtf_file
         self.it = None
         self.dict = {}
 
     def __setitem__(self, key, value):
+        """Set the Gene object for a given key."""
         self.dict[key] = value
-    
+
     def __getitem__(self, key):
+        """Return the Gene object for a given key, raising KeyError if absent."""
         return self.dict[key]
-    
+
     def __delitem__(self, key):
+        """Remove the entry for a given key."""
         del self.dict[key]
 
     def __contains__(self, key):
+        """True if key is present."""
         return key in self.dict
 
     def __len__(self):
+        """Number of genes stored."""
         return len(self.dict )
-    
+
     def __iter__(self):
+        """Iterate over keys, like a plain dict."""
         return (key for key in self.dict)
-    
+
     def keys(self):
+        """Return the keys, like dict.keys()."""
         return self.dict.keys()
 
     def values(self):
+        """Return the Gene objects, like dict.values()."""
         return self.dict.values()
 
     def items(self):
+        """Return (key, Gene) pairs, like dict.items()."""
         return self.dict.items()
     
     """
@@ -673,6 +863,7 @@ def gtf_to_dict(gtf_file, primary_key = "gene_id"):
             if line.startswith("#"):
                 continue
             spt = line.strip().split("\t")
+            attr = None
             try:
                 chr_ = spt[0]
                 start = int(spt[3]) - 1 # gtf are 1 based convert to 0 based
@@ -685,7 +876,7 @@ def gtf_to_dict(gtf_file, primary_key = "gene_id"):
                 try:
                     gene_id = attr[primary_key]
                 except:
-                    log.error("failed to recover gene_id {} {}".format(attr, spt))
+                    log.error("failed to recover gene_id {} {}".format(line, spt))
                     raise
                 gene_symbol = attr.get("gene_symbol", gene_id)
                 if "gene_symbol" not in attr:
@@ -700,13 +891,13 @@ def gtf_to_dict(gtf_file, primary_key = "gene_id"):
             if gene_id not in dico:
                 
                 this = Gene(gene_id=gene_id, symbol=gene_symbol,
-                     interval=copy.deepcopy(this_interval))
-                     
+                     interval=this_interval.clone())
+
                 dico[gene_id] = this
-                
-                
+
+
             if type_ == "gene":
-                dico[gene_id].interval = copy.deepcopy(this_interval)
+                dico[gene_id].interval = this_interval.clone()
             
             # if not a transcript pass
             if (transcript_id  := attr.get("transcript_id", None)):
@@ -775,9 +966,12 @@ def get_intron(exons: list[Interval]):
         this_n += 1 if exon_sorted[0].strand == "+" else -1
         
         introns.append(Interval(chr_=e.chr, start=e0, end=e1, strand=strand, phase=".", attribute=attr))
-        if strand == "-":
-            introns = sorted(introns, key=lambda x: x.start, reverse=True)
-        else:
-            introns = sorted(introns, key=lambda x: x.start, reverse=False)
+
+    # already sorted use reverse instead? to check like overlapping exon may break reverse
+    if strand == "-":
+        introns = sorted(introns, key=lambda x: x.start, reverse=True)
+    else:
+        introns = sorted(introns, key=lambda x: x.start, reverse=False)
+
     return introns
 
