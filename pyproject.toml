@@ -30,6 +30,8 @@ dev = [
     "pytest>=7",
     "pytest-cov",
 ]
+intervals = ["intervaltree>=3.1"]
+
 
 [tool.setuptools.packages.find]
 where = ["."]

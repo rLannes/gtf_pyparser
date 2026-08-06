@@ -675,6 +675,96 @@ class Gtf():
         self.it = None
         self.dict = {}
 
+
+    def build_intervals(self):
+        """
+        Build a per-chromosome IntervalTree of gene spans, for use by
+        get_genes_at_position.
+
+        Populates self.it with one IntervalTree per chromosome, indexing
+        every gene in self.dict by its (start, end) span with gene_id as
+        the stored data.
+
+        Requires the intervaltree package:
+            pip install gtf_pyparser[intervals]  or  pip install intervaltree
+
+        Raises
+        ------
+        ImportError
+            If the intervaltree package is not installed.
+        """
+        try:
+            from intervaltree import IntervalTree
+        except ImportError:
+            raise ImportError("to use this function you need intervalTree package, you can install as a dependecy ```pip install gtf_pyparser[intervals]```")
+        except:
+            raise
+
+
+        dico_it = {}
+        for gene_id, gene in self.dict.items():
+            if gene.chr not in dico_it:
+                dico_it[gene.chr] = IntervalTree()
+
+            dico_it[gene.chr][gene.start: gene.end] = gene_id
+        self.it = dico_it
+
+
+    def get_genes_at_position(self, position, flanking=0):
+        """
+        Find genes overlapping a genomic position, using the IntervalTree
+        index (built lazily via build_intervals if not already present).
+
+        Requires the intervaltree package:
+            pip install gtf_pyparser[intervals]  or  pip install intervaltree
+
+        Parameters
+        ----------
+        position : dict-like
+            Must have 'chr', 'start' and 'end' keys, with
+            position['start'] < position['end'].
+        flanking : int, optional
+            Number of bases to extend the query on both sides of the
+            position, i.e. the query span is
+            [position['start'] - flanking, position['end'] + flanking].
+            Defaults to 0.
+
+        Returns
+        -------
+        list[str] or None
+            gene_id of every gene overlapping the (flanked) position, or
+            None if the chromosome isn't indexed or no gene overlaps.
+
+        Raises
+        ------
+        ImportError
+            If the intervaltree package is not installed.
+        """
+        try:
+            from intervaltree import IntervalTree
+        except ImportError:
+            raise ImportError("to use this function you need intervalTree package, you can install as a dependecy ```pip install gtf_pyparser[intervals]```")
+        except:
+            raise
+
+        if not self.it:
+            log.info("interval tree is not present")
+            log.info("Building the interval tree")
+            self.build_intervals()
+
+        if position["chr"] not in self.it:
+            log.info("chr {} not present in the interval tree".format(position["chr"]))
+            return None
+        res = self.it[position["chr"]][position["start"] -  flanking: position["end"] + flanking ]
+        if not res:
+            log.info("No genes found")
+            return None
+
+        return [e.data for e in res]
+        
+        
+
+
     def __setitem__(self, key, value):
         """Set the Gene object for a given key."""
         self.dict[key] = value
@@ -976,4 +1066,6 @@ def get_intron(exons: list[Interval]):
         introns = sorted(introns, key=lambda x: x.start, reverse=False)
 
     return introns
+
+
 

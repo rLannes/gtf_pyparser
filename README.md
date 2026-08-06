@@ -16,6 +16,12 @@ Currently working on direct access / indexing by name and position.
 pip install gtf_pyparser
 ```
 
+Position lookups (`Gtf.build_intervals` / `Gtf.get_genes_at_position`) require the optional `intervaltree` dependency:
+
+```bash
+pip install gtf_pyparser[intervals]
+```
+
 ## Quick start
 
 ```python
@@ -63,6 +69,25 @@ attrs = gtf_pyparser.get_attr('gene_id "ENSG00000139618"; gene_name "BRCA2";')
 ```
 
 Repeated attribute keys (e.g. multiple `tag "..."` entries) are collected into a list instead of overwriting each other.
+
+### Position lookups
+
+*Requires the `intervaltree` package — see [Installation](#installation).*
+
+`Gtf.get_genes_at_position(position, flanking=0)` returns the `gene_id` of every gene overlapping a genomic position. The underlying `IntervalTree` index is built lazily on first use (or explicitly via `Gtf.build_intervals()`).
+
+```python
+genes = gtf_pyparser.parse_gtf("annotation.gtf")
+
+genes.get_genes_at_position({"chr": "chr1", "start": 100_000, "end": 100_050})
+# ["ENSG00000139618"]
+
+genes.get_genes_at_position({"chr": "chr1", "start": 100_000, "end": 100_050}, flanking=500)
+```
+
+- **`position`** — dict-like with `chr`, `start`, `end` keys, `start < end`
+- **`flanking`** — bases to extend the query on both sides (default `0`)
+- **Returns** — `list[str]` of overlapping `gene_id`s, or `None` if the chromosome isn't in the GTF or nothing overlaps
 
 ### Derived features
 

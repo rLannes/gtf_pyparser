@@ -46,6 +46,9 @@ Data classes:
 - :class:`Interval`   — immutable genomic coordinate record
 - :class:`Transcript` — transcript isoform with grouped feature intervals
 - :class:`Gene`       — gene locus containing one or more transcripts
+- :class:`Gtf`        — dict-like container of Gene objects returned by parse_gtf;
+  also exposes build_intervals/get_genes_at_position for position lookups
+  (requires the optional intervaltree dependency)
 
 Functions:
 
@@ -62,6 +65,7 @@ from .gtf_pyparser import (
     Interval,
     Transcript,
     Gene,
+    Gtf,
     get_intron,
     get_attr,
     gtf_to_dict as parse_gtf,
@@ -75,6 +79,7 @@ __all__ = [
     "Interval",
     "Transcript",
     "Gene",
+    "Gtf",
     "get_intron",
     "get_attr",
     "parse_gtf",
