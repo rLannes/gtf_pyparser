@@ -6,6 +6,9 @@ A lightweight, dependency-free Python library for parsing GTF (Gene Transfer For
 
 Most GTF parsing libraries are either too heavy (requiring pandas, SQLite, or large C extensions) or return flat data structures that don't reflect the natural hierarchy of genomic annotation. `gtf_pyparser` gives you a clean `Gene → Transcript → features` object model with no dependencies beyond the Python standard library.
 
+### new V0.3+
+added intervall tree support. you can now query genes over a position.
+
 ### Roadmap
 
 Currently working on direct access / indexing by name and position.
