@@ -45,6 +45,22 @@ for transcript_id, transcript in gene.transcripts.items():
 
 All coordinates are **0-based half-open** (start inclusive, end exclusive), consistent with BED and BAM format. GTF files are 1-based inclusive; the conversion is applied automatically during parsing.
 
+## Data model
+
+```
+Gtf
+├── dict: dict[primary_key, Gene]
+│   └── Gene
+│       ├── interval: Interval  // start, end, chr, strand, phase, attributes.
+│       ├── attribute: dict
+│       └── transcripts: dict[transcript_id, Transcript]
+│           └── Transcript
+│               ├── interval: Interval
+│               ├── attribute: dict
+│               └── features: dict[feature_type, list[Interval]]   // exon / CDS / UTR / ...
+└── it: dict[chr, IntervalTree]   // lazily built, keyed by gene_id
+```
+
 ## API
 
 ### Parsing
@@ -167,6 +183,26 @@ A gene locus containing one or more transcript isoforms.
 | `transcripts` | `dict[str, Transcript]`   | Transcript ID → Transcript                                         |
 
 Convenience properties: `start`, `end`, `chr`, `phase`, `length`, `attribute`, `biotype` (checks `biotype`, `gene_biotype`, then `gene_type`), `transcript_names`, `transcript_length`, `has_transcript`, `has_exon`, `exon` / `intron` (list of `(gene_id, transcript_id, ...)` tuples across all transcripts).
+
+## Interoperating with easyfasta
+
+`gtf_pyparser` has no dependency on [`easyfasta`](https://github.com/rLannes/easyfasta) (or any other sequence library) — the two interoperate purely by shape. `Interval` supports dict-style access (`interval["start"]`, `interval.get("strand")`), which is exactly the protocol `easyfasta.fai_common.query_position`/`query_iter`/`query_splice` expect from a "position": anything with `["chr"]`, `["start"]`, `["end"]`, and an optional `["strand"]`. That means `Interval` objects — including a transcript's `.exons` — can be passed straight through, no glue code or extra dependency required:
+
+```python
+import gtf_pyparser
+from easyfasta import fai_common
+
+genes = gtf_pyparser.parse_gtf("annotation.gtf")
+transcript = genes["ENSG00000139618"].transcripts["ENST00000001"]
+
+# a single feature
+cds_seq = fai_common.query_position("genome.fa", transcript.cds[0])
+
+# concatenate all exons into the spliced transcript sequence
+mrna_seq = fai_common.query_splice("genome.fa", transcript.exons)
+```
+
+`Interval.to_dict()` / `Interval.from_dict()` round-trip through the same `chr`/`start`/`end`/`strand` shape, so plain dicts work interchangeably with `Interval` objects anywhere this protocol is expected.
 
 ## Logging
 

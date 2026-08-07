@@ -7,7 +7,7 @@ public API re-exported by gtf_pyparser/__init__.py; import from the package
 root rather than from here directly.
 """
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 import re
 import logging
 import sys
@@ -152,7 +152,14 @@ class Interval:
 
     def to_dict(self):
         """Return a plain dict with all fields, suitable for Interval.from_dict()."""
-        return asdict(self)
+        return {
+            "chr": self.chr_,
+            "start": self.start,
+            "end": self.end,
+            "strand": self.strand,
+            "phase": self.phase,
+            "attribute": self.attribute,
+        }
 
     def clone(self):
         """
