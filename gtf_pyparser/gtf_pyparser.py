@@ -381,17 +381,18 @@ class Transcript:
         -------
         str or None
             One of ``"geneStart"``, ``"geneEnd"``, ``"exon"``, ``"intron"``,
-            ``"junctionDonnor"``, ``"junctionAcceptor"``, or ``None`` if the
+            ``"junctionDonor"``, ``"junctionAcceptor"``, or ``None`` if the
             position falls outside the transcript's span.
+
+            ``"junctionDonor"``, ``"junctionAcceptor"`` correspond to the last and first exon base
         """
-        # end coordinates are 0-based half-open (one past the last base), so
-        # the actual last base of an interval is `end - 1`, not `end`.
+
         if strand_aware and self.interval.strand != strand:
             return None
         if not self.interval.contains(position=position, strand=strand, strand_aware=strand_aware):
             return None
 
-        if self.interval.start == position:
+        if self.interval.start - 1 == position:
             if self.interval.strand == "+":
                 return "geneStart"
             return "geneEnd"
@@ -404,14 +405,14 @@ class Transcript:
         # do they interesect with exon:
         for exon in self.exons:
             if exon.contains(position=position, strand=strand, strand_aware=strand_aware):
-                if exon.start == position:
+                if exon.start - 1 == position:
                     if self.interval.strand == "+":
                         return "junctionAcceptor"
-                    return "junctionDonnor"
+                    return "junctionDonor"
                 elif exon.end - 1 == position:
                     if self.interval.strand != "+":
                         return "junctionAcceptor"
-                    return "junctionDonnor"
+                    return "junctionDonor"
                 else:
                     return "exon"
         return "intron"
