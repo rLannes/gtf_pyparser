@@ -67,6 +67,13 @@ class Interval:
         """Hash based on genomic position and strand only (attribute/phase excluded)."""
         return hash((self.chr_, self.start, self.end, self.strand))
 
+    def __lt__(self, other):
+        assert self["chr"] == other["chr"]
+        return (self["start"], self["end"], self["strand"]) < (other["start"], other["end"], other["strand"])
+
+        
+
+
     def __repr__(self):
         """Compact ``chr:start-end(strand)`` representation."""
         return "{}:{}-{}({})".format(self.chr, self.start, self.end, self.strand)
@@ -304,6 +311,8 @@ class Transcript:
         """Length of the transcript's genomic span, in bases."""
         return self.interval.length
 
+
+    # compute todo 
     @property
     def utr_5p(self):
         """List of 5' UTR Intervals ('5UTR' for FlyBase, 'five_prime_utr' for Ensembl), or None."""
@@ -311,6 +320,17 @@ class Transcript:
             return utr # flybase
         if (utr := self.features.get("five_prime_utr")): # ensembl
             return utr
+        log.warning("no utr file computing 5p UTR from CDS/exon")
+        exons, cds = self.exons_positions, self.cds
+        if cds is None or exons is None:
+            log.warning("can't compute utr if no exon or not cds")
+            return None
+        if self.strand == "+":
+            return find_utr_left(exons, [x.position for x in cds])
+        else:
+            return find_utr_right(exons, [x.position for x in cds])
+
+
 
     @property
     def utr_3p(self):
@@ -319,6 +339,15 @@ class Transcript:
             return utr # flybase
         if (utr := self.features.get("three_prime_utr")): # ensembl
             return utr
+        log.warning("no utr file computing 3p UTR from CDS/exon")
+        exons, cds = self.exons_positions, self.cds
+        if cds is None or exons is None:
+            log.warning("can't compute utr if no exon or not cds")
+            return None
+        if self.strand == "-":
+            return find_utr_left(exons, [x.position for x in cds])
+        else:
+            return find_utr_right(exons, [x.position for x in cds])
 
     @property
     def exons_positions(self):
@@ -1178,4 +1207,44 @@ def get_intron(exons: list[Interval]):
     return introns
 
 
+
+def find_utr_left(exon, cds):
+    if cds is None:
+        return None
+    
+    exon = sorted(exon, key=lambda x: x["start"])
+    cds = sorted(cds, key=lambda x: x["start"])
+
+    if exon[0]["start"] == cds[0]["start"]:
+        return None
+
+    utr = []
+    for e in exon:
+        ends = min(e["end"], cds[0]["start"])
+        utr.append(Interval(e["chr"], e["start"],
+                             ends, e["strand"]))
+
+        if ends < e["end"]:
+            return utr
+
+
+
+def find_utr_right(exon, cds):
+    if cds is None:
+        return None
+    
+    exon = sorted(exon, key=lambda x: x["start"], reverse=True)
+    cds = sorted(cds, key=lambda x: x["start"], reverse=True)
+
+    if exon[0]["end"] == cds[0]["end"]:
+        return None
+
+    utr = []
+    for e in exon:
+        starts = max(e["start"], cds[0]["end"])
+        utr.append(Interval(e["chr"], starts,
+                             e["end"], e["strand"]))
+
+        if starts > e["start"]:
+            return utr
 
