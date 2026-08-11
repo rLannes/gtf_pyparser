@@ -384,29 +384,67 @@ class Transcript:
             ``"junctionDonnor"``, ``"junctionAcceptor"``, or ``None`` if the
             position falls outside the transcript's span.
         """
-        # closed=True: boundary positions (position == interval.end) must stay
-        # "contained" so the geneEnd/junction checks below can ever be reached.
-        if not self.interval.contains(position=position, strand=strand, strand_aware=strand_aware, closed=True):
+        # end coordinates are 0-based half-open (one past the last base), so
+        # the actual last base of an interval is `end - 1`, not `end`.
+        if strand_aware and self.interval.strand != strand:
             return None
+        if not self.interval.contains(position=position, strand=strand, strand_aware=strand_aware):
+            return None
+
         if self.interval.start == position:
-            return "geneStart"
-        if  self.interval.end == position:
+            if self.interval.strand == "+":
+                return "geneStart"
             return "geneEnd"
+
+        if self.interval.end - 1 == position:
+            if self.interval.strand == "+":
+                return "geneEnd"
+            return "geneStart"
 
         # do they interesect with exon:
         for exon in self.exons:
-            if exon.contains(position=position, strand=strand, strand_aware=strand_aware, closed=True):
+            if exon.contains(position=position, strand=strand, strand_aware=strand_aware):
                 if exon.start == position:
-                    if strand == "+":
+                    if self.interval.strand == "+":
                         return "junctionAcceptor"
                     return "junctionDonnor"
-                elif exon.end == position:
-                    if strand != "+":
+                elif exon.end - 1 == position:
+                    if self.interval.strand != "+":
                         return "junctionAcceptor"
                     return "junctionDonnor"
                 else:
                     return "exon"
         return "intron"
+
+
+
+
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class Intergenic: ...
+
+@dataclass(frozen=True)
+class TSS: gene_id: str; transcript_id: str
+
+@dataclass(frozen=True)
+class TES: gene_id: str; transcript_id: str
+
+@dataclass(frozen=True)
+class Intron: gene_id: str; transcript_id: str
+
+@dataclass(frozen=True)
+class Exon: gene_id: str; transcript_id: str
+
+@dataclass(frozen=True)
+class ExonAcceptor: gene_id: str; transcript_id: str
+
+@dataclass(frozen=True)
+class ExonDonor: gene_id: str; transcript_id: str
+
+DetailPosition = Intergenic | TSS | TES | Intron | Exon | ExonAcceptor | ExonDonor
+
+
 
 
 
@@ -497,6 +535,10 @@ class Gene:
         return to_p.strip()
 
     @property
+    def strand(self):
+        return self.interval.strand
+
+    @property
     def exon(self):
         """List of (gene_id, transcript_id, exons) tuples, one per transcript."""
         res = []
@@ -549,15 +591,18 @@ class Gene:
 
         Returns
         -------
-        dict[str, str or None]
-            Mapping of transcript_id to the classification returned by
-            Transcript.classify_position (see that method for the possible
-            values).
+        tuple[str, dict[str, str or None]]
+            ``(gene_id, classification)`` where ``classification`` maps each
+            transcript_id to the classification returned by
+            Transcript.classify_position: ``"geneStart"``, ``"geneEnd"``,
+            ``"exon"``, ``"intron"``, ``"junctionDonnor"``,
+            ``"junctionAcceptor"``, or ``None`` (position outside that
+            transcript, e.g. strand mismatch under strand_aware).
         """
         res = {}
         for transcript_key, transcript_item in self.transcripts.items():
             res[transcript_key] =  transcript_item.classify_position(position=position, strand=strand, strand_aware=strand_aware)
-        return res
+        return (self.gene_id, res)
 
     # private helper method that delegate parsing transript out of the main loop
     def _parse_transcript_line(self, transcript_id, transcript_symbol,  interval, feature):
@@ -717,7 +762,7 @@ class Gtf():
         self.it = dico_it
 
 
-    def get_genes_at_position(self, position, flanking=0):
+    def get_genes_at_position(self, position, flanking=0, strand_aware=False):
         """
         Find genes overlapping a genomic position, using the IntervalTree
         index (built lazily via build_intervals if not already present).
@@ -730,6 +775,7 @@ class Gtf():
         position : dict-like
             Must have 'chr', 'start' and 'end' keys, with
             position['start'] < position['end'].
+            if strand_aware will look for "strand" keys default to + is absent
         flanking : int, optional
             Number of bases to extend the query on both sides of the
             position, i.e. the query span is
@@ -766,7 +812,9 @@ class Gtf():
         if not res:
             log.info("No genes found")
             return None
-
+        if strand_aware:
+            strand = position.get('strand', "+")
+            return [e.data for e in res if self.dict[e.data].strand == strand]
         return [e.data for e in res]
         
         
@@ -807,6 +855,53 @@ class Gtf():
     def items(self):
         """Return (key, Gene) pairs, like dict.items()."""
         return self.dict.items()
+
+
+    def classify_position(self, position, strand_aware):
+        """
+        Classify a genomic position against every gene overlapping it.
+
+        Parameters
+        ----------
+        position : dict-like
+            Must have 'chr' and 'start' keys ('start' is the 0-based position
+            to classify). 'strand' is optional; if strand_aware and absent,
+            defaults to '+'.
+        strand_aware : bool
+            Forwarded to Gene.classify_position / Transcript.classify_position.
+            If True, transcripts on a different strand than ``position``
+            classify to None instead of being matched.
+
+        Returns
+        -------
+        list[Intergenic] or list[tuple[str, dict[str, str or None]]]
+            ``[Intergenic]`` (the class itself, not an instance) if no gene
+            overlaps the position. Otherwise one ``(gene_id, classification)``
+            tuple per overlapping gene, as returned by Gene.classify_position
+            (see that method for the possible classification values).
+        """
+        if not self.it:
+            log.info("interval tree is not present")
+            log.info("Building the interval tree")
+            self.build_intervals()
+
+        chr_, pos = position["chr"], position["start"]
+        strand = position.get("strand", "+")
+
+        genes_p = self.get_genes_at_position({"chr": chr_, "start": pos - 1, "end": pos + 1, "strand": strand})
+
+        if not genes_p:
+            return [Intergenic]
+
+        res = []
+        for gene_id in genes_p:
+            gene = self.dict[gene_id]
+            inter_res = gene.classify_position(pos, strand, strand_aware)
+            if inter_res[1]:
+                res.append(inter_res)
+
+        return res
+
     
     """
     def overlap(self):
