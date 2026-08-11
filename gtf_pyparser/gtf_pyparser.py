@@ -512,6 +512,8 @@ class Gene:
             return biotype
         if (biotype := self.interval.attribute.get("gene_type", None)):
             return biotype
+        if (biotype := self.interval.attribute.get("transcript_biotype", None)):
+            return biotype
 
     @property
     def has_transcript(self):
@@ -1079,6 +1081,8 @@ def gtf_to_dict(gtf_file, primary_key = "gene_id"):
                 gene_symbol = attr.get("gene_symbol", gene_id)
                 if "gene_symbol" not in attr:
                     gene_symbol = attr.get("gene_name", gene_id)
+                if "gene_name" not in attr:
+                    gene_symbol = attr.get("gene", gene_id)
                 
             except:
                 log.error("failed to parse line: {} {} {}".format(attr, line, spt))

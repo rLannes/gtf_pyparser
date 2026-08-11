@@ -368,6 +368,18 @@ class TestGtfClassifyPosition(unittest.TestCase):
         self.assertEqual(self._run(gtf, {"chr": "1", "start": 150, "strand": "-"}, True),
                           [{"G1.t1": None}])
 
+    def test_classified_when_strand_mismatches_and_not_strand_aware(self):
+        # with strand_aware=False a mismatched query strand must not suppress
+        # classification -- the transcript's own strand ("+") still drives
+        # geneStart/geneEnd naming, ignoring the query strand ("-").
+        gtf = self._single_transcript_gtf("+")
+        self.assertEqual(self._run(gtf, {"chr": "1", "start": 150, "strand": "-"}, False),
+                          [{"G1.t1": "intron"}])
+
+        gtf_wider = self._single_transcript_gtf_wider_gene("+")
+        self.assertEqual(self._run(gtf_wider, {"chr": "1", "start": 100, "strand": "-"}, False),
+                          [{"G1.t1": "geneStart"}])
+
 
 if __name__ == '__main__':
     unittest.main()
