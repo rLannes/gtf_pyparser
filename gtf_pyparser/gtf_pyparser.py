@@ -381,10 +381,10 @@ class Transcript:
         -------
         str or None
             One of ``"geneStart"``, ``"geneEnd"``, ``"exon"``, ``"intron"``,
-            ``"junctionDonor"``, ``"junctionAcceptor"``, or ``None`` if the
+            ``"exonDonor"``, ``"exonAcceptor"``, or ``None`` if the
             position falls outside the transcript's span.
 
-            ``"junctionDonor"``, ``"junctionAcceptor"`` correspond to the last and first exon base
+            ``"exonDonor"``, ``"exonAcceptor"`` correspond to the exon's start/end boundary
         """
 
         if strand_aware and self.interval.strand != strand:
@@ -598,8 +598,8 @@ class Gene:
             ``(gene_id, classification)`` where ``classification`` maps each
             transcript_id to the classification returned by
             Transcript.classify_position: ``"geneStart"``, ``"geneEnd"``,
-            ``"exon"``, ``"intron"``, ``"junctionDonnor"``,
-            ``"junctionAcceptor"``, or ``None`` (position outside that
+            ``"exon"``, ``"intron"``, ``"exonDonor"``,
+            ``"exonAcceptor"``, or ``None`` (position outside that
             transcript, e.g. strand mismatch under strand_aware).
         """
         res = {}
@@ -707,6 +707,7 @@ def get_attr(string, reg=REG):
             log.error("failed to parse line {}".format(string))
             raise
     return dico
+
 
 
 class Gtf():

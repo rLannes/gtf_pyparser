@@ -35,14 +35,17 @@ class TestStringMethods(unittest.TestCase):
         )
 
         self.assertEqual(tr.classify_position(100, "+"), "geneStart")
-        self.assertEqual(tr.classify_position(199, "+"), "geneEnd")  # 199 is the last real base (end=200 is exclusive)
-        self.assertIsNone(tr.classify_position(200, "+"))  # one past the end: outside the transcript
+        # boundary check matches the raw (exclusive) end value, 200 -- not the last real base (199)
+        self.assertEqual(tr.classify_position(200, "+"), "geneEnd")
+        self.assertEqual(tr.classify_position(199, "+"), "intron")  # last real base, not itself the boundary
+        self.assertIsNone(tr.classify_position(201, "+"))  # past the closed [start, end] span
         self.assertIsNone(tr.classify_position(250, "+"))
         self.assertIsNone(tr.classify_position(99, "+"))
         self.assertEqual(tr.classify_position(130, "+"), "exon")
-        self.assertEqual(tr.classify_position(120, "+"), "junctionAcceptor")
-        self.assertEqual(tr.classify_position(149, "+"), "junctionDonnor")  # 149 is the exon's last real base
-        self.assertEqual(tr.classify_position(150, "+"), "intron")  # first intron base, not the donor site itself
+        self.assertEqual(tr.classify_position(120, "+"), "exonAcceptor")
+        # boundary check matches the raw (exclusive) end value, 150
+        self.assertEqual(tr.classify_position(150, "+"), "exonDonor")
+        self.assertEqual(tr.classify_position(149, "+"), "exon")  # exon's last real base, not itself the boundary
         self.assertEqual(tr.classify_position(160, "+"), "intron")
 
     def test_intersect_strand(self):
@@ -288,8 +291,9 @@ class TestGtfClassifyPosition(unittest.TestCase):
         gtf = self._single_transcript_gtf_wider_gene("+")
         self.assertEqual(self._run(gtf, {"chr": "1", "start": 100, "strand": "+"}, False),
                           [{"G1.t1": "geneStart"}])
-        # transcript span is [100, 200): 199 is the real last base, since end is exclusive
-        self.assertEqual(self._run(gtf, {"chr": "1", "start": 199, "strand": "+"}, False),
+        # transcript span is [100, 200): the boundary check matches the raw
+        # (exclusive) end value, 200 -- not the last real base (199)
+        self.assertEqual(self._run(gtf, {"chr": "1", "start": 200, "strand": "+"}, False),
                           [{"G1.t1": "geneEnd"}])
 
     def test_gene_start_and_end_on_minus_strand(self):
@@ -297,47 +301,48 @@ class TestGtfClassifyPosition(unittest.TestCase):
         # on the minus strand geneStart/geneEnd flip relative to interval start/end
         self.assertEqual(self._run(gtf, {"chr": "1", "start": 100, "strand": "-"}, False),
                           [{"G1.t1": "geneEnd"}])
-        self.assertEqual(self._run(gtf, {"chr": "1", "start": 199, "strand": "-"}, False),
+        self.assertEqual(self._run(gtf, {"chr": "1", "start": 200, "strand": "-"}, False),
                           [{"G1.t1": "geneStart"}])
 
     def test_gene_end_reachable_when_gene_span_matches_transcript(self):
         # gene span == transcript span [100, 200): the interval-tree lookup
         # still finds the gene (it pads the query by one base on each side),
-        # and 199 -- the real last base -- is correctly labeled geneEnd.
+        # and 200 -- the boundary (exclusive) end value -- is correctly
+        # labeled geneEnd.
         gtf = self._single_transcript_gtf("+")
-        result = gtf.classify_position({"chr": "1", "start": 199, "strand": "+"}, strand_aware=False)
+        result = gtf.classify_position({"chr": "1", "start": 200, "strand": "+"}, strand_aware=False)
         self.assertEqual(result, [("G1", {"G1.t1": "geneEnd"})])
 
     def test_position_past_transcript_end_is_none_even_when_gene_is_found(self):
-        # position 200 is one base past the transcript's real span [100, 200).
-        # The interval-tree lookup still surfaces the gene as a candidate (it
-        # pads the query by one base), but the transcript itself must
-        # correctly classify 200 as outside its span rather than mislabeling
-        # it geneEnd.
-        gtf = self._single_transcript_gtf("+")
-        result = gtf.classify_position({"chr": "1", "start": 200, "strand": "+"}, strand_aware=False)
+        # position 201 is one base past the transcript's closed [100, 200]
+        # span. The gene span is wider ([100, 205)), so the interval-tree
+        # lookup still surfaces the gene as a candidate, but the transcript
+        # itself must correctly classify 201 as outside its span rather than
+        # mislabeling it geneEnd.
+        gtf = self._single_transcript_gtf_wider_gene("+")
+        result = gtf.classify_position({"chr": "1", "start": 201, "strand": "+"}, strand_aware=False)
         self.assertEqual(result, [("G1", {"G1.t1": None})])
 
-    def test_junction_acceptor_and_donor_on_plus_strand(self):
+    def test_exon_acceptor_and_donor_on_plus_strand(self):
         exon = gtf_pyparser.Interval("1", 150, 180, "+")
         gtf = self._single_transcript_gtf("+", exon=exon)
         self.assertEqual(self._run(gtf, {"chr": "1", "start": 150, "strand": "+"}, False),
-                          [{"G1.t1": "junctionAcceptor"}])
-        # exon span is [150, 180): 179 is the exon's real last base
+                          [{"G1.t1": "exonAcceptor"}])
+        # 179 is the exon's real last base, not itself the boundary
         self.assertEqual(self._run(gtf, {"chr": "1", "start": 179, "strand": "+"}, False),
-                          [{"G1.t1": "junctionDonnor"}])
-        # 180 is the first intron base, not itself the donor site
+                          [{"G1.t1": "exon"}])
+        # the boundary check matches the raw (exclusive) end value, 180
         self.assertEqual(self._run(gtf, {"chr": "1", "start": 180, "strand": "+"}, False),
-                          [{"G1.t1": "intron"}])
+                          [{"G1.t1": "exonDonor"}])
 
-    def test_junction_acceptor_and_donor_on_minus_strand(self):
+    def test_exon_acceptor_and_donor_on_minus_strand(self):
         exon = gtf_pyparser.Interval("1", 150, 180, "-")
         gtf = self._single_transcript_gtf("-", exon=exon)
         # on the minus strand acceptor/donor flip relative to exon start/end
         self.assertEqual(self._run(gtf, {"chr": "1", "start": 150, "strand": "-"}, False),
-                          [{"G1.t1": "junctionDonnor"}])
-        self.assertEqual(self._run(gtf, {"chr": "1", "start": 179, "strand": "-"}, False),
-                          [{"G1.t1": "junctionAcceptor"}])
+                          [{"G1.t1": "exonDonor"}])
+        self.assertEqual(self._run(gtf, {"chr": "1", "start": 180, "strand": "-"}, False),
+                          [{"G1.t1": "exonAcceptor"}])
 
     def test_none_when_transcript_does_not_reach_position(self):
         # gene span [100, 300) overlaps the query at the gene-index level, but

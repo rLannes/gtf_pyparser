@@ -131,7 +131,9 @@ gene.classify_position(150, "+")
 # {"ENST00000001": "exon", "ENST00000002": "intron"}
 ```
 
-Returns one of `"geneStart"`, `"geneEnd"`, `"exon"`, `"intron"`, `"junctionDonnor"`, `"junctionAcceptor"`, or `None` if the position falls outside the feature's span. `Gene.classify_position` returns a `dict[transcript_id, result]` covering every transcript on the gene.
+Returns one of `"geneStart"`, `"geneEnd"`, `"exon"`, `"intron"`, `"exonDonor"`, `"exonAcceptor"`, or `None` if the position falls outside the feature's span. `Gene.classify_position` returns a `dict[transcript_id, result]` covering every transcript on the gene.
+
+Boundary positions (`geneStart`/`geneEnd`/`exonDonor`/`exonAcceptor`) are matched against the raw `start`/`end` values of the transcript/exon interval, so the boundary check is inclusive of `end` (not `end - 1`).
 
 ### Data classes
 
