@@ -389,15 +389,17 @@ class Transcript:
 
         if strand_aware and self.interval.strand != strand:
             return None
+
+        # 
         if not self.interval.contains(position=position, strand=strand, strand_aware=strand_aware):
             return None
 
-        if self.interval.start - 1 == position:
+        if self.interval.start == position:
             if self.interval.strand == "+":
                 return "geneStart"
             return "geneEnd"
 
-        if self.interval.end - 1 == position:
+        if self.interval.end  == position:
             if self.interval.strand == "+":
                 return "geneEnd"
             return "geneStart"
@@ -405,11 +407,11 @@ class Transcript:
         # do they interesect with exon:
         for exon in self.exons:
             if exon.contains(position=position, strand=strand, strand_aware=strand_aware):
-                if exon.start - 1 == position:
+                if exon.start == position:
                     if self.interval.strand == "+":
                         return "junctionAcceptor"
                     return "junctionDonor"
-                elif exon.end - 1 == position:
+                elif exon.end  == position:
                     if self.interval.strand != "+":
                         return "junctionAcceptor"
                     return "junctionDonor"
