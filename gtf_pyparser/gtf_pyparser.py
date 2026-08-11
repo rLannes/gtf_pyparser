@@ -391,7 +391,7 @@ class Transcript:
             return None
 
         # 
-        if not self.interval.contains(position=position, strand=strand, strand_aware=strand_aware):
+        if not self.interval.contains(position=position, strand=strand, strand_aware=strand_aware, closed=True):
             return None
 
         if self.interval.start == position:
@@ -406,15 +406,15 @@ class Transcript:
 
         # do they interesect with exon:
         for exon in self.exons:
-            if exon.contains(position=position, strand=strand, strand_aware=strand_aware):
+            if exon.contains(position=position, strand=strand, strand_aware=strand_aware, closed=True):
                 if exon.start == position:
                     if self.interval.strand == "+":
-                        return "junctionAcceptor"
-                    return "junctionDonor"
+                        return "exonAcceptor"
+                    return "exonDonor"
                 elif exon.end  == position:
                     if self.interval.strand != "+":
-                        return "junctionAcceptor"
-                    return "junctionDonor"
+                        return "exonAcceptor"
+                    return "exonDonor"
                 else:
                     return "exon"
         return "intron"
