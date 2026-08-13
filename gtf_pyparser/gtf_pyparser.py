@@ -193,6 +193,45 @@ class Interval:
         """
         return {"chr": self.chr, "start": self.start, "end": self.end, "strand": self.strand}
     
+    def flank(self, upstream=0, downstream=0):
+        return Interval(chr_ = self["chr"], start=self["start"] - upstream, end=self["end"] + downstream,
+                  strand=self["strand"], phase=self.phase, attribute={k: (list(v) if isinstance(v, list) else v) for k, v in self.attribute.items()})
+
+    def shift(self, offset = 0):
+        return Interval(chr_ = self["chr"], start=self["start"] + offset, end=self["end"] + offset,
+                  strand=self["strand"], phase=self.phase, attribute={k: (list(v) if isinstance(v, list) else v) for k, v in self.attribute.items()})
+
+    def to_bed_string(self, name=".", score="."):
+        return "{}\t{}\t{}\t{}\t{}\t{}".format(self["chr"], self["start"],
+          self["end"], name, score, self["strand"])
+
+    def midpoint(self):
+        return self["start"] + ((self["end"] - self["start"]) / 2)
+
+
+    def intersection(self, other, strand_aware=True):
+        if not self.overlap(other, strand_aware):
+            return None
+
+        return Interval(chr_ = self["chr"], start=max(self["start"], other["start"]),
+                         end=min(self["end"], other["end"]),
+                  strand=self["strand"], phase=self.phase, attribute={k: (list(v) if isinstance(v, list) else v) for k, v in self.attribute.items()})
+    
+    
+    def distance(self, other , strand_aware: True):
+
+        if other["chr"] != self["chr"]:
+            return None
+        
+        if self.overlap(other, strand_aware):
+            return None
+
+        
+        x = abs(self["end"] - other["start"])
+        y = abs(self["start"] - other["start"])
+
+        return min(x, y)
+
 
     def overlaps(self, other, strand_aware=True, closed=False):
         """
@@ -244,6 +283,8 @@ class Interval:
     def chr(self):
         """Chromosome name (alias for chr_, since chr is a reserved keyword)."""
         return self.chr_
+
+    
 
 @dataclass
 class Transcript:
@@ -926,7 +967,7 @@ class Gtf():
         genes_p = self.get_genes_at_position({"chr": chr_, "start": pos - 1, "end": pos + 1, "strand": strand})
 
         if not genes_p:
-            return [Intergenic]
+            return ["intergenic"]
 
         res = []
         for gene_id in genes_p:
