@@ -1149,8 +1149,6 @@ def gtf_to_dict(gtf_file, primary_key = "gene_id"):
                     log.error("failed to recover gene_id {} {}".format(line, spt))
                     raise
 
-
-                
             except:
                 log.error("failed to parse line: {} {} {}".format(attr, line, spt))
                 raise
