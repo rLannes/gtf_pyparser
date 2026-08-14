@@ -1148,11 +1148,8 @@ def gtf_to_dict(gtf_file, primary_key = "gene_id"):
                 except:
                     log.error("failed to recover gene_id {} {}".format(line, spt))
                     raise
-                gene_symbol = attr.get("gene_symbol", gene_id)
-                if "gene_symbol" not in attr:
-                    gene_symbol = attr.get("gene_name", gene_id)
-                if "gene_name" not in attr:
-                    gene_symbol = attr.get("gene", gene_id)
+
+
                 
             except:
                 log.error("failed to parse line: {} {} {}".format(attr, line, spt))
@@ -1161,6 +1158,12 @@ def gtf_to_dict(gtf_file, primary_key = "gene_id"):
             this_interval = Interval(chr_=chr_, start=start, end=end, strand=strand, phase=phase, attribute=attr)
 
             if gene_id not in dico:
+
+                gene_symbol = attr.get("gene_symbol", gene_id)
+                if gene_symbol == gene_id:
+                    gene_symbol = attr.get("gene_name", gene_id)
+                if gene_symbol == gene_id:
+                    gene_symbol = attr.get("gene", gene_id)
                 
                 this = Gene(gene_id=gene_id, symbol=gene_symbol,
                      interval=this_interval.clone())
